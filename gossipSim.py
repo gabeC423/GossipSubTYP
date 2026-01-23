@@ -1,11 +1,8 @@
 import simpy
+from config import *
 
 env = simpy.Environment()
 
-number_of_nodes = 100
-block_size = 10
-base_delay = 2
-peer_degree = 6
 current_block_id = 0
 current_node_id = 0
 
