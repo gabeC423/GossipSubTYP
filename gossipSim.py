@@ -26,6 +26,7 @@ class Node:
         self.inbox = simpy.Store(env)
         self.seen_blocks = set()
         self.log = []
+        self.env = env
 
         env.process(self.run())
 
@@ -40,18 +41,21 @@ class Node:
             log_message = "Neighbour list has hit peer degree, could not add node: " + str(neighbour.node_id)
             self.log.append(log_message)
 
-    def receive_block(self, block):
-        if block.block_id not in self.seen_blocks:
-            self.seen_blocks.add(block.block_id)
-            log_message = "Block added to seen blocks: " + str(block.block_id)
-            self.log.append(log_message)
-        else:
-            log_message = "Block has already been received by this node: " + str(block.block_id)
-            self.log.append(log_message)
+    def run(self):
+        while True:
+            block = yield self.inbox.get()
+            if block.block_id not in self.seen_blocks:
+                self.seen_blocks.add(block.block_id)
+                log_message = "Block added to seen blocks: " + str(block.block_id)
+                self.log.append(log_message)
+                self.env.process(self.send_block(block))
+            else:
+                log_message = "Block has already been received by this node: " + str(block.block_id)
+                self.log.append(log_message)
     
     def send_block(self, block):
         for neighbour in self.neighbours:
             send_delay = block.size / self.bandwidth
-            yield env.timeout(send_delay)
+            yield self.env.timeout(send_delay)
             yield neighbour.inbox.put(block)
 
