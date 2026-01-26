@@ -1,8 +1,9 @@
 import simpy
+import random
 from config import *
 
 env = simpy.Environment()
-
+nodes = []
 current_block_id = 0
 current_node_id = 0
 
@@ -20,7 +21,7 @@ class Node:
         global current_node_id
         current_node_id += 1
 
-        self.bandwidth = 30
+        self.bandwidth = bandwidth
         self.neighbours = []
         self.node_id = current_node_id
         self.inbox = simpy.Store(env)
@@ -35,22 +36,25 @@ class Node:
 
         if len(self.neighbours) < peer_degree:
             self.neighbours.append(neighbour)
-            log_message = "Added new neighbour: " + str(neighbour.node_id)
+            log_message = self.env.now, "Added new neighbour: " + str(neighbour.node_id)
             self.log.append(log_message)
         else:
-            log_message = "Neighbour list has hit peer degree, could not add node: " + str(neighbour.node_id)
+            log_message = self.env.now, "Neighbour list has hit peer degree, could not add node: " + str(neighbour.node_id)
             self.log.append(log_message)
 
     def run(self):
         while True:
             block = yield self.inbox.get()
+            receive_delay = block.size / self.bandwidth
+            yield self.env.timeout(receive_delay)
+
             if block.block_id not in self.seen_blocks:
                 self.seen_blocks.add(block.block_id)
-                log_message = "Block added to seen blocks: " + str(block.block_id)
+                log_message = self.env.now, "Received block: " + str(block.block_id)
                 self.log.append(log_message)
                 self.env.process(self.send_block(block))
             else:
-                log_message = "Block has already been received by this node: " + str(block.block_id)
+                log_message = self.env.now, "Block has already been received by this node: " + str(block.block_id)
                 self.log.append(log_message)
     
     def send_block(self, block):
@@ -59,3 +63,42 @@ class Node:
             yield self.env.timeout(send_delay)
             yield neighbour.inbox.put(block)
 
+    def create_block(self):
+        block = Message(self.node_id)
+        self.seen_blocks.add(block.block_id)
+        log_message = self.env.now, "Created block: " + str(block.block_id)
+        self.log.append(log_message)
+        self.env.process(self.send_block(block))
+
+
+def instantiate_nodes():
+    for i in range(number_of_nodes):
+        new_node = Node(env)
+        nodes.append(new_node)
+
+
+def create_topology():
+    for node in nodes:
+        while len(node.neighbours) < peer_degree:
+            proposed_peer = nodes[random.randint(0, number_of_nodes - 1)]
+
+            while proposed_peer in node.neighbours or proposed_peer == node:
+                proposed_peer = nodes[random.randint(0, number_of_nodes - 1)]
+
+            node.add_neighbour(proposed_peer)
+            log_message = node.env.now, "Added neighbour: " + str(proposed_peer.node_id)
+            node.log.append(log_message) 
+
+instantiate_nodes()
+create_topology()
+
+block_proposer = random.choice(nodes)
+block_proposer.create_block()
+
+env.run(until=100)
+
+for node in nodes:
+    print(f"Node {node.node_id} log:")
+    for entry in node.log:
+        print(entry)
+    print()
