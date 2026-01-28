@@ -7,3 +7,5 @@ base_delay = 2
 peer_degree = 6
 
 bandwidth = 30
+
+consensus_deadline = 50

@@ -28,6 +28,7 @@ class Node:
         self.seen_blocks = set()
         self.log = []
         self.env = env
+        self.metrics = {}
 
         env.process(self.run())
 
@@ -50,8 +51,12 @@ class Node:
 
             if block.block_id not in self.seen_blocks:
                 self.seen_blocks.add(block.block_id)
+
                 log_message = self.env.now, "Received block: " + str(block.block_id)
                 self.log.append(log_message)
+
+                self.metrics[block.block_id] = self.env.now
+                
                 self.env.process(self.send_block(block))
             else:
                 log_message = self.env.now, "Block has already been received by this node: " + str(block.block_id)
@@ -66,8 +71,12 @@ class Node:
     def create_block(self):
         block = Message(self.node_id)
         self.seen_blocks.add(block.block_id)
+
         log_message = self.env.now, "Created block: " + str(block.block_id)
         self.log.append(log_message)
+
+        self.metrics[block.block_id] = self.env.now
+
         self.env.process(self.send_block(block))
 
 
@@ -75,7 +84,6 @@ def instantiate_nodes():
     for i in range(number_of_nodes):
         new_node = Node(env)
         nodes.append(new_node)
-
 
 def create_topology():
     for node in nodes:
@@ -89,6 +97,17 @@ def create_topology():
             log_message = node.env.now, "Added neighbour: " + str(proposed_peer.node_id)
             node.log.append(log_message) 
 
+def calculate_consenus_time(block_id):
+    highest_time = None
+
+    for node in nodes:
+        if block_id in node.metrics:
+            if highest_time is None or node.metrics[block_id] > highest_time:
+                highest_time = node.metrics[block_id]
+
+    return highest_time
+
+    
 instantiate_nodes()
 create_topology()
 
