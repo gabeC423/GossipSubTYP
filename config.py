@@ -1,4 +1,4 @@
-number_of_nodes = 100
+number_of_nodes = 9
 
 block_size = 10
 
@@ -9,3 +9,5 @@ peer_degree = 6
 bandwidth = 30
 
 consensus_deadline = 50
+
+max_parallel_nodes = 3
