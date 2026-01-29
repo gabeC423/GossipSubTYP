@@ -8,13 +8,14 @@ current_block_id = 0
 current_node_id = 0
 
 class Message:
-    def __init__(self, sender_id):
+    def __init__(self, sender_id, creation_time):
         global current_block_id
         current_block_id += 1
 
         self.block_id = current_block_id 
         self.size = block_size
         self.sender_id = sender_id
+        self.creation_time = creation_time
 
 class Node:
     def __init__(self, env):
@@ -69,7 +70,7 @@ class Node:
             yield neighbour.inbox.put(block)
 
     def create_block(self):
-        block = Message(self.node_id)
+        block = Message(self.node_id, self.env.now)
         self.seen_blocks.add(block.block_id)
 
         log_message = self.env.now, "Created block: " + str(block.block_id)
@@ -78,6 +79,8 @@ class Node:
         self.metrics[block.block_id] = self.env.now
 
         self.env.process(self.send_block(block))
+
+        return block
 
 
 def instantiate_nodes():
@@ -97,22 +100,31 @@ def create_topology():
             log_message = node.env.now, "Added neighbour: " + str(proposed_peer.node_id)
             node.log.append(log_message) 
 
-def calculate_consenus_time(block_id):
+def calculate_consenus_time(block):
     highest_time = None
+    block_received_by_all = True
+    consensus_time = None
 
     for node in nodes:
-        if block_id in node.metrics:
-            if highest_time is None or node.metrics[block_id] > highest_time:
-                highest_time = node.metrics[block_id]
+        if block.block_id in node.metrics:
+            if highest_time is None or node.metrics[block.block_id] > highest_time:
+                highest_time = node.metrics[block.block_id]
+        else:
+            block_received_by_all = False
 
-    return highest_time
+    if block_received_by_all == True:
+        consensus_time = highest_time - block.creation_time
+    else:
+        consensus_time = None
+    
+    return consensus_time
 
     
 instantiate_nodes()
 create_topology()
 
 block_proposer = random.choice(nodes)
-block_proposer.create_block()
+block = block_proposer.create_block()
 
 env.run(until=100)
 
@@ -121,3 +133,14 @@ for node in nodes:
     for entry in node.log:
         print(entry)
     print()
+
+consensus_time = calculate_consenus_time(block)
+
+if consensus_time == None:
+    print("CONSENSUS WAS NOT MET BEFORE DEADLINE.")
+elif consensus_time > consensus_deadline:
+    print("CONSENSUS MET BUT DEADLINE EXCEEDED BY: " + str(consensus_time - consensus_deadline))
+elif consensus_time == consensus_deadline:
+    print("CONSENSUS DEADLINE MET.")
+else:
+    print("CONSENSUS ACHIEVED BEFORE DEADLINE, TIME REMAINING BEFORE DEADLINE: " + str(consensus_deadline - consensus_time))
