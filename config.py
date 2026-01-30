@@ -11,3 +11,7 @@ bandwidth = 30
 consensus_deadline = 50
 
 max_parallel_nodes = 3
+
+proposer_probability = 0.2
+
+simulation_time = 500
