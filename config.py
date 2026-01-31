@@ -2,6 +2,8 @@ number_of_nodes = 9
 
 block_size = 10
 
+i_have_want_size = 2
+
 base_delay = 2
 
 peer_degree = 6
