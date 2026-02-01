@@ -116,6 +116,9 @@ class Node:
                     
                     #Locally Records the time the node received the block:
                     self.metrics[message.block_id] = self.env.now
+                elif message.parent is not None and message.parent not in self.blocks.values():
+                    log_message = "Block: " + str(message.block_id) + " is an orphan, message discarded."
+                    self.log.append(log_message)
                 else:
                     #If block has already been received, node locally logs this event as unsucessful:
                     log_message = self.env.now, "Block has already been received by this node: " + str(message.block_id)
@@ -230,6 +233,7 @@ class Node:
 def instantiate_nodes():
     for i in range(number_of_nodes):
         new_node = Node(env, start_block)
+        new_node.blocks[start_block.block_id] = start_block
         nodes.append(new_node)
 
 def create_topology():

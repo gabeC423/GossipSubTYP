@@ -10,10 +10,10 @@ peer_degree = 6
 
 bandwidth = 30
 
-consensus_deadline = 50
+consensus_deadline = 10000
 
 max_parallel_nodes = 3
 
 proposer_probability = 0.2
 
-simulation_time = 500
+simulation_time = 1000000
