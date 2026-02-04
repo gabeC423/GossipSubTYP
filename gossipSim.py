@@ -298,6 +298,17 @@ def calculate_consenus_time(block):
     
     return consensus_time
 
+def get_number_forks():
+    forks = set()
+
+    for node in nodes:
+        for end in node.chain_ends:
+            forks.add(end.block_id)
+
+    return len(forks) - 1
+
+
+
 #Initialisation:
 start_block = Message(current_block_id, sender_id = None, creation_time = 0, height = 0, parent = None)
 instantiate_nodes()
@@ -332,3 +343,5 @@ for block in created_blocks:
         print("BLOCK: " + str(block.block_id) + "CONSENSUS DEADLINE MET.")
     else:
         print("BLOCK: " + str(block.block_id) + "CONSENSUS ACHIEVED BEFORE DEADLINE, TIME REMAINING BEFORE DEADLINE: " + str(consensus_deadline - consensus_time))
+
+print("Number of forks in network: " + str(get_number_forks()))
