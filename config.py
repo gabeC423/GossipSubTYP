@@ -4,16 +4,16 @@ block_size = 10
 
 i_have_want_size = 2
 
-base_delay = 2
+base_delay = 0.5
 
-peer_degree = 6
+peer_degree = 3
 
 bandwidth = 30
 
-consensus_deadline = 10000
+consensus_deadline = 1000
 
-max_parallel_nodes = 3
+max_parallel_nodes = 1
 
 proposer_probability = 0.2
 
-simulation_time = 1000000
+simulation_time = 10000

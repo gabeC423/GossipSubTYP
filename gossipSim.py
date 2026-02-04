@@ -62,6 +62,7 @@ class Node:
         self.end_of_chain_block = initial_end_chain
         self.blocks = {}
         self.chain_ends = set()
+        self.peer_degree_met = False
         
         #Add initial block to the chain ends:
         self.chain_ends.add(initial_end_chain)
@@ -75,8 +76,8 @@ class Node:
         if len(self.neighbours) < peer_degree:
             #Adds a new neighbour and locally logs this event as successful:
             self.neighbours.append(neighbour)
-            log_message = self.env.now, "Added new neighbour: " + str(neighbour.node_id)
-            self.log.append(log_message)
+            #log_message = self.env.now, "Added new neighbour: " + str(neighbour.node_id)
+            #self.log.append(log_message)
         else:
             #If the peer degree condition is not met then the node locally logs the event as unsuccessful.
             log_message = self.env.now, "Neighbour list has hit peer degree, could not add node: " + str(neighbour.node_id)
@@ -103,9 +104,9 @@ class Node:
                     self.log.append(log_message)
 
                     #Checks if the block's parent exists and is an end of a chain:
-                    if message.parent is not None and message.parent in self.chain_ends:
-                        #If so it is removed so that it can be replaced by it's child:
-                        self.chain_ends.remove(message.parent)
+                    if message.parent is not None:
+                        self.chain_ends = {end for end in self.chain_ends if end.block_id != message.parent.block_id}
+
                     
                     #Set current block as new chain end:
                     self.chain_ends.add(message)
@@ -238,15 +239,28 @@ def instantiate_nodes():
 
 def create_topology():
     for node in nodes:
-        while len(node.neighbours) < peer_degree:
-            proposed_peer = nodes[random.randint(0, number_of_nodes - 1)]
+        available_nodes  = []
 
-            while proposed_peer in node.neighbours or proposed_peer == node:
-                proposed_peer = nodes[random.randint(0, number_of_nodes - 1)]
+        for n in nodes:
+            if n.peer_degree_met == False and n != node:
+                available_nodes.append(n)
+
+        # FIX: Prevent infinite loop if not enough available nodes
+        while len(node.neighbours) < peer_degree and available_nodes:  
+
+            proposed_peer = random.choice(available_nodes)
+            available_nodes.remove(proposed_peer)
 
             node.add_neighbour(proposed_peer)
-            log_message = node.env.now, "Added neighbour: " + str(proposed_peer.node_id)
-            node.log.append(log_message) 
+
+            # FIX: Make connection bidirectional so both nodes count the neighbour
+            proposed_peer.add_neighbour(node)  
+
+        if len(node.neighbours) >= peer_degree:
+            node.peer_degree_met = True
+
+        log_message = node.env.now, "Added neighbours: " +str([n.node_id for n in node.neighbours])
+        node.log.append(log_message)
 
 def calculate_consenus_time(block):
     highest_time = None
@@ -263,7 +277,7 @@ def calculate_consenus_time(block):
         
         current_ancestor = current_greatest_end
         while current_ancestor != None:
-            if current_ancestor != block:
+            if current_ancestor.block_id != block.block_id:
                 if current_ancestor.parent != None:
                     current_ancestor = current_ancestor.parent
                 else:
@@ -295,6 +309,9 @@ for node in nodes:
 
 for node in proposer_nodes:
     created_blocks.append(node.create_block())
+
+if not proposer_nodes:
+    proposer_nodes.append(random.choice(nodes))
 
 env.run(until = simulation_time)
 
