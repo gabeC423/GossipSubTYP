@@ -250,17 +250,34 @@ def create_topology():
 
 def calculate_consenus_time(block):
     highest_time = None
-    block_received_by_all = True
+    consensus_met = True
     consensus_time = None
 
     for node in nodes:
-        if block.block_id in node.metrics:
-            if highest_time is None or node.metrics[block.block_id] > highest_time:
-                highest_time = node.metrics[block.block_id]
-        else:
-            block_received_by_all = False
+        current_greatest_end = None
+        for end in node.chain_ends:
+            if current_greatest_end == None:
+                current_greatest_end = end
+            elif end.height > current_greatest_end.height:
+                current_greatest_end = end
+        
+        current_ancestor = current_greatest_end
+        while current_ancestor != None:
+            if current_ancestor != block:
+                if current_ancestor.parent != None:
+                    current_ancestor = current_ancestor.parent
+                else:
+                    consensus_met = False
+                    break
+            elif current_ancestor == block:
+                if highest_time is None or node.metrics[block.block_id] > highest_time:
+                    highest_time = node.metrics[block.block_id]
+                break
+        
+        if consensus_met == False:
+            break
 
-    if block_received_by_all == True:
+    if consensus_met == True:
         consensus_time = highest_time - block.creation_time
     else:
         consensus_time = None
