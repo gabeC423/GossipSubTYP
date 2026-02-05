@@ -10,7 +10,7 @@ peer_degree = 4
 
 bandwidth = 30
 
-consensus_deadline = 20
+consensus_deadline = 15
 
 max_parallel_nodes = 1
 

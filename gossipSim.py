@@ -11,6 +11,8 @@ current_node_id = 0
 proposer_nodes = []
 created_blocks = []
 
+#------------------------------------------------------------------------------------#
+                     #MESSAGE CLASSES:
 #Message class, defines structure of a message:
 class Message:
     def __init__(self, block_id, sender_id, creation_time, height, parent = None):
@@ -43,6 +45,8 @@ class IWantMessage():
         self.requested_block_id = requested_block_id
         self.size = i_have_want_size
 
+#------------------------------------------------------------------------------------#
+                        #NODE CLASS AND METHODS:
 #Node class, defines structure of a node:
 class Node:
     def __init__(self, env, initial_end_chain):
@@ -203,9 +207,11 @@ class Node:
         self.chain_ends.remove(current_best_end)
         self.chain_ends.add(block)
 
+        #Locally log creation of block:
         log_message = self.env.now, "Created block: " + str(block.block_id)
         self.log.append(log_message)
-
+        
+        #Update metrics:
         self.metrics[block.block_id] = self.env.now
         self.env.process(self.send_message(block))
 
@@ -230,6 +236,9 @@ class Node:
                 active_nodes = [p for p in active_nodes if not p.triggered]
         else:
             yield self.env.process(self.send_single_node_message(message, recipient_id))
+
+#------------------------------------------------------------------------------------#
+                    #PROGRAM FUNCTIONS:
         
 def instantiate_nodes():
     for i in range(number_of_nodes):
@@ -237,10 +246,12 @@ def instantiate_nodes():
         new_node.blocks[start_block.block_id] = start_block
         nodes.append(new_node)
 
+#Creates network layout for nodes:
 def create_topology():
     for node in nodes:
-        available_nodes  = []
+        available_nodes = []
 
+        #Ensures that available nodes to be added as neighbours have not already met peer degree:
         for n in nodes:
             if n.peer_degree_met == False and n != node:
                 available_nodes.append(n)
@@ -255,13 +266,16 @@ def create_topology():
 
             #Make connection bidirectional so both nodes count the neighbour
             proposed_peer.add_neighbour(node)  
-
+        
+        #Checks if peer degree is met:
         if len(node.neighbours) >= peer_degree:
             node.peer_degree_met = True
 
+        #Locally logs that neighbour was added:
         log_message = node.env.now, "Added neighbours: " +str([n.node_id for n in node.neighbours])
         node.log.append(log_message)
 
+#Calculates consensus for a block:
 def calculate_consenus_time(block):
     highest_time = None
     consensus_met = True
@@ -272,63 +286,77 @@ def calculate_consenus_time(block):
         current_depth = 0
         current_greatest_end = None
 
+        #Checks each fork:
         for end in node.chain_ends:
             if current_greatest_end == None:
                 current_greatest_end = end
+            #Checks to see which is longest chain:
             elif end.height > current_greatest_end.height:
                 current_greatest_end = end
         
         current_ancestor = current_greatest_end
 
+        #Traverses chain:
         while current_ancestor != None:
             if current_ancestor.block_id != block.block_id:
+                #Increments depth:
                 current_depth += 1
 
                 if current_ancestor.parent != None:
                     current_ancestor = current_ancestor.parent
+                #Break out of loop if chain has fully been traversed:
                 else:
                     consensus_met = False
                     break
+            #Consensus is not met if confirmation depth is not satisfied:
             elif current_ancestor == block:
                 if current_depth < confirmation_depth:
                     consensus_met = False
                     break
-                    
+
+                #Update new highest time:
                 if highest_time is None or node.metrics[block.block_id] > highest_time:
                     highest_time = node.metrics[block.block_id]
 
+                #Exit loop:
                 break
         
         if consensus_met == False:
             break
-
+    
+    #Calculate time consensus was met:
     if consensus_met == True:
         consensus_time = highest_time - block.creation_time
+    #'None' output used to determine that consensus was not met:
     else:
         consensus_time = None
     
     return consensus_time
 
+#Calculates how many forks there are in the simulation:
 def get_number_forks():
     forks = set()
 
+    #Finds forks in each node:
     for node in nodes:
         for end in node.chain_ends:
             forks.add(end.block_id)
 
     return len(forks) - 1
 
+#Function allowing for repeated dynamic selection of proposal nodes:
 def dynamic_node_proposal():
     while True:
+        #Waits to propose new node after each interval:
         yield env.timeout(proposal_interval)
 
+        #Randomly slects mode and adds its block to created blocks array:
         for node in nodes:
             if random.random() < proposer_probability:
                 created_blocks.append(node.create_block())
-
-
-
-#Initialisation:
+                
+#------------------------------------------------------------------------------------#               
+                            #INITIALISATION:
 #Genesis block:
 start_block = Message(current_block_id, sender_id = None, creation_time = 0, height = 0, parent = None)
 
