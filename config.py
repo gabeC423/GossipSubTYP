@@ -17,3 +17,5 @@ max_parallel_nodes = 1
 proposer_probability = 0.2
 
 simulation_time = 10000
+
+confirmation_depth = 3

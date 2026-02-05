@@ -245,7 +245,7 @@ def create_topology():
             if n.peer_degree_met == False and n != node:
                 available_nodes.append(n)
 
-        # FIX: Prevent infinite loop if not enough available nodes
+        #Prevent infinite loop if not enough available nodes
         while len(node.neighbours) < peer_degree and available_nodes:  
 
             proposed_peer = random.choice(available_nodes)
@@ -253,7 +253,7 @@ def create_topology():
 
             node.add_neighbour(proposed_peer)
 
-            # FIX: Make connection bidirectional so both nodes count the neighbour
+            #Make connection bidirectional so both nodes count the neighbour
             proposed_peer.add_neighbour(node)  
 
         if len(node.neighbours) >= peer_degree:
@@ -266,9 +266,12 @@ def calculate_consenus_time(block):
     highest_time = None
     consensus_met = True
     consensus_time = None
+    
 
     for node in nodes:
+        current_depth = 0
         current_greatest_end = None
+
         for end in node.chain_ends:
             if current_greatest_end == None:
                 current_greatest_end = end
@@ -276,16 +279,24 @@ def calculate_consenus_time(block):
                 current_greatest_end = end
         
         current_ancestor = current_greatest_end
+
         while current_ancestor != None:
             if current_ancestor.block_id != block.block_id:
+                current_depth += 1
+
                 if current_ancestor.parent != None:
                     current_ancestor = current_ancestor.parent
                 else:
                     consensus_met = False
                     break
             elif current_ancestor == block:
+                if current_depth < confirmation_depth:
+                    consensus_met = False
+                    break
+                    
                 if highest_time is None or node.metrics[block.block_id] > highest_time:
                     highest_time = node.metrics[block.block_id]
+
                 break
         
         if consensus_met == False:
@@ -306,7 +317,6 @@ def get_number_forks():
             forks.add(end.block_id)
 
     return len(forks) - 1
-
 
 
 #Initialisation:
