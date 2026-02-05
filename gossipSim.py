@@ -280,8 +280,8 @@ def calculate_consenus_time(block):
     highest_time = None
     consensus_met = True
     consensus_time = None
+    nodes_met = 0
     
-
     for node in nodes:
         current_depth = 0
         current_greatest_end = None
@@ -308,11 +308,11 @@ def calculate_consenus_time(block):
                 else:
                     consensus_met = False
                     break
-            #Consensus is not met if confirmation depth is not satisfied:
+            #Consensus is met if confirmation depth is satisfied:
             elif current_ancestor == block:
-                if current_depth < confirmation_depth:
-                    consensus_met = False
-                    break
+                if current_depth >= confirmation_depth:
+                    #Amount of nodes met consensus is incremented:
+                    nodes_met += 1
 
                 #Update new highest time:
                 if highest_time is None or node.metrics[block.block_id] > highest_time:
@@ -320,12 +320,9 @@ def calculate_consenus_time(block):
 
                 #Exit loop:
                 break
-        
-        if consensus_met == False:
-            break
-    
+            
     #Calculate time consensus was met:
-    if consensus_met == True:
+    if nodes_met /len(nodes) >= 0.51:
         consensus_time = highest_time - block.creation_time
     #'None' output used to determine that consensus was not met:
     else:
