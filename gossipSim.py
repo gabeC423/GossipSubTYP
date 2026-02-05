@@ -318,33 +318,42 @@ def get_number_forks():
 
     return len(forks) - 1
 
+def dynamic_node_proposal():
+    while True:
+        yield env.timeout(proposal_interval)
+
+        for node in nodes:
+            if random.random() < proposer_probability:
+                created_blocks.append(node.create_block())
+
+
 
 #Initialisation:
+#Genesis block:
 start_block = Message(current_block_id, sender_id = None, creation_time = 0, height = 0, parent = None)
+
+#Set up network:
 instantiate_nodes()
 create_topology()
 
-for node in nodes:
-    if random.random() < proposer_probability:
-        proposer_nodes.append(node)
+#Periodically create proposer nodes:
+env.process(dynamic_node_proposal())
 
-for node in proposer_nodes:
-    created_blocks.append(node.create_block())
-
-if not proposer_nodes:
-    proposer_nodes.append(random.choice(nodes))
-
+#Start simulation:
 env.run(until = simulation_time)
 
+#Display node logs:
 for node in nodes:
     print(f"Node {node.node_id} log:")
     for entry in node.log:
         print(entry)
     print()
 
+#Calculate consensus time:
 for block in created_blocks:
     consensus_time = calculate_consenus_time(block)
 
+    #Consensus output:
     if consensus_time == None:
         print("BLOCK: " + str(block.block_id) + "CONSENSUS WAS NOT MET BEFORE DEADLINE.")
     elif consensus_time > consensus_deadline:
@@ -354,4 +363,5 @@ for block in created_blocks:
     else:
         print("BLOCK: " + str(block.block_id) + "CONSENSUS ACHIEVED BEFORE DEADLINE, TIME REMAINING BEFORE DEADLINE: " + str(consensus_deadline - consensus_time))
 
+#Shows number of forks in simulation:
 print("Number of forks in network: " + str(get_number_forks()))
