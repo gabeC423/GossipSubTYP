@@ -80,12 +80,14 @@ class Node:
         if len(self.neighbours) < peer_degree:
             #Adds a new neighbour and locally logs this event as successful:
             self.neighbours.append(neighbour)
+
+            #Debug:
             #log_message = self.env.now, "Added new neighbour: " + str(neighbour.node_id)
             #self.log.append(log_message)
-        else:
+        #else:
             #If the peer degree condition is not met then the node locally logs the event as unsuccessful.
-            log_message = self.env.now, "Neighbour list has hit peer degree, could not add node: " + str(neighbour.node_id)
-            self.log.append(log_message)
+            # log_message = self.env.now, "Neighbour list has hit peer degree, could not add node: " + str(neighbour.node_id)
+            # self.log.append(log_message)
 
     #Run method:
     def run(self):
@@ -103,36 +105,41 @@ class Node:
                     i_have_message = IHaveMessage(self.node_id, self.env.now, message.block_id)
                     self.env.process(self.send_message(i_have_message))
                     
-                    #Locally logs that an 'I have' message was sent to all neighbours:
-                    log_message = self.env.now, "'I have' message for block: " + str(i_have_message.advertised_block_id) + " was sent to all neighbours."
-                    self.log.append(log_message)
+                    #Debug:
+                    # #Locally logs that an 'I have' message was sent to all neighbours:
+                    # log_message = self.env.now, "'I have' message for block: " + str(i_have_message.advertised_block_id) + " was sent to all neighbours."
+                    # self.log.append(log_message)
 
                     #Checks if the block's parent exists and is an end of a chain:
                     if message.parent is not None:
                         self.chain_ends = {end for end in self.chain_ends if end.block_id != message.parent.block_id}
 
-                    
                     #Set current block as new chain end:
                     self.chain_ends.add(message)
 
-                    #Locally logs this event as successful:
-                    log_message = self.env.now, "Received block: " + str(message.block_id)
-                    self.log.append(log_message)
+                    # #Debug:
+                    # #Locally logs this event as successful:
+                    # log_message = self.env.now, "Received block: " + str(message.block_id)
+                    # self.log.append(log_message)
                     
                     #Locally Records the time the node received the block:
                     self.metrics[message.block_id] = self.env.now
-                elif message.parent is not None and message.parent not in self.blocks.values():
-                    log_message = "Block: " + str(message.block_id) + " is an orphan, message discarded."
-                    self.log.append(log_message)
-                else:
-                    #If block has already been received, node locally logs this event as unsucessful:
-                    log_message = self.env.now, "Block has already been received by this node: " + str(message.block_id)
-                    self.log.append(log_message)
+                    
+                #Debug:
+                # elif message.parent is not None and message.parent not in self.blocks.values():
+                #     log_message = "Block: " + str(message.block_id) + " is an orphan, message discarded."
+                #     self.log.append(log_message)
+                #Debug:
+                # else:
+                #     #If block has already been received, node locally logs this event as unsucessful:
+                #     log_message = self.env.now, "Block has already been received by this node: " + str(message.block_id)
+                #     self.log.append(log_message)
             #Handles if the received message is of type: 'I have':
             elif isinstance(message, IHaveMessage):
-                #Locally logs that this node received an 'I have' message:
-                log_message = self.env.now, "'I have' message received from node: " + str(message.sender_id)
-                self.log.append(log_message)
+                #Debug:
+                # #Locally logs that this node received an 'I have' message:
+                # log_message = self.env.now, "'I have' message received from node: " + str(message.sender_id)
+                # self.log.append(log_message)
 
                 #Decides whether the node wants to request the advertised block, this is decided by whether it has seen the advertised block before:
                 if message.advertised_block_id not in self.seen_blocks:
@@ -143,14 +150,16 @@ class Node:
                     if recipient is not None:
                         yield self.env.process(self.send_message(i_want_message, recipient))
 
-                        #Locally logs that this node has sent an 'I have' message to the node who sent the 'I want' message:
-                        log_message = self.env.now, "'I want' message sent to: " + str(message.sender_id)
-                        self.log.append(log_message)
+                        #Debug:
+                        # #Locally logs that this node has sent an 'I have' message to the node who sent the 'I want' message:
+                        # log_message = self.env.now, "'I want' message sent to: " + str(message.sender_id)
+                        # self.log.append(log_message)
             #Handles if the received message is of type: 'I want':
             elif isinstance(message, IWantMessage):
-                #Locally logs that this node received an 'I want' message:
-                log_message = self.env.now, "'I want' message received from node: " + str(message.sender_id)
-                self.log.append(log_message)
+                #Debug:
+                # #Locally logs that this node received an 'I want' message:
+                # log_message = self.env.now, "'I want' message received from node: " + str(message.sender_id)
+                # self.log.append(log_message)
 
                 if message.requested_block_id in self.blocks:
                     requested_block = self.blocks[message.requested_block_id]
