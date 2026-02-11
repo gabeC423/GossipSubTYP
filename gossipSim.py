@@ -1,7 +1,9 @@
 #Imports:
+import numpy as np
 import simpy
 import random
 from config import *
+import matplotlib.pyplot as plt
 
 #Global variables:
 env = simpy.Environment()
@@ -10,6 +12,9 @@ current_block_id = 0
 current_node_id = 0
 proposer_nodes = []
 created_blocks = []
+
+#Datasets:
+block_creation_time = {}
 
 #------------------------------------------------------------------------------------#
                      #MESSAGE CLASSES:
@@ -202,6 +207,7 @@ class Node:
 
         #Creates block and sets it's parent as the best chain end:
         block = Message(current_block_id, self.node_id, self.env.now, current_best_end.height + 1, current_best_end)
+        block_creation_time[block.block_id] = self.env.now
 
         #Create 'I have' for created block:
         i_have_message = IHaveMessage(self.node_id, self.env.now, block.block_id)
@@ -415,3 +421,17 @@ for block in created_blocks:
 
 #Shows number of forks in simulation:
 print("Number of forks in network: " + str(get_number_forks()))
+
+#------------------------------------------------------------------------------------#               
+                            #DATA REPRESENTATION:
+#Scatter graph for block creation times:
+block_ids = list(block_creation_time.keys())
+creation_times = list(block_creation_time.values())
+plt.scatter(block_ids, creation_times, color='blue')
+plt.grid(True, linestyle='--', alpha=0.5)
+plt.xlabel("Block ID")
+plt.xticks(block_ids[::2])
+plt.plot(block_ids, creation_times, color='lightblue', linestyle='--', alpha=0.5)
+plt.ylabel("Time")
+plt.title("Block Creation Times")
+plt.savefig("block_creation_times.png")
