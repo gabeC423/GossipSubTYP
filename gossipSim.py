@@ -49,7 +49,7 @@ class IWantMessage():
                         #NODE CLASS AND METHODS:
 #Node class, defines structure of a node:
 class Node:
-    def __init__(self, env, initial_end_chain):
+    def __init__(self, env, initial_end_chain, hashrate):
         #Set Node ID:
         global current_node_id
         current_node_id += 1
@@ -67,6 +67,7 @@ class Node:
         self.blocks = {}
         self.chain_ends = set()
         self.peer_degree_met = False
+        self.hashrate = hashrate
         
         #Add initial block to the chain ends:
         self.chain_ends.add(initial_end_chain)
@@ -248,10 +249,16 @@ class Node:
 
 #------------------------------------------------------------------------------------#
                     #PROGRAM FUNCTIONS:
+
+#Generates a hashrate for a node randomly:
+def generate_hashrate():
+    hashrate = random.randint(1, 10)
+    return hashrate
         
 def instantiate_nodes():
     for i in range(number_of_nodes):
-        new_node = Node(env, start_block)
+        hashrate = generate_hashrate()
+        new_node = Node(env, start_block, hashrate)
         new_node.blocks[start_block.block_id] = start_block
         nodes.append(new_node)
 
@@ -350,17 +357,22 @@ def get_number_forks():
 
     return len(forks) - 1
 
-#Function allowing for repeated dynamic selection of proposal nodes:
-def dynamic_node_proposal():
+#Function allowing for repeated dynamic selection of proposal nodes based on hash-rate:
+def mining(node, mining_rate):
     while True:
-        #Waits to propose new node after each interval:
-        yield env.timeout(proposal_interval)
+        wait_interval = random.expovariate(node.hashrate * mining_rate)
+        yield env.timeout(wait_interval)
+        created_blocks.append(node.create_block())
 
-        #Randomly slects mode and adds its block to created blocks array:
-        for node in nodes:
-            if random.random() < proposer_probability:
-                created_blocks.append(node.create_block())
-                
+#Finds total hash-rate of network:
+def calculate_total_hashrate():
+    total_hashrate = 0
+
+    for node in nodes:
+        total_hashrate += node.hashrate
+
+    return total_hashrate
+      
 #------------------------------------------------------------------------------------#               
                             #INITIALISATION:
 #Genesis block:
@@ -370,8 +382,12 @@ start_block = Message(current_block_id, sender_id = None, creation_time = 0, hei
 instantiate_nodes()
 create_topology()
 
-#Periodically create proposer nodes:
-env.process(dynamic_node_proposal())
+total_hashrate = calculate_total_hashrate()
+mining_rate =  1 / (block_target_interval * total_hashrate)
+
+#Starts mining for each node:
+for node in nodes:
+    env.process(mining(node, mining_rate))
 
 #Start simulation:
 env.run(until = simulation_time)
