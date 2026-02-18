@@ -21,3 +21,5 @@ simulation_time = 12000
 confirmation_depth = 2
 
 block_target_interval = 300
+
+lambda_NET = 1.0 / block_target_interval

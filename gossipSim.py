@@ -1,9 +1,10 @@
-#Imports:
+#Libraries:
 import numpy as np
 import simpy
 import random
 from config import *
 import matplotlib.pyplot as plt
+import math
 
 #Global variables:
 env = simpy.Environment()
@@ -73,6 +74,7 @@ class Node:
         self.chain_ends = set()
         self.peer_degree_met = False
         self.hashrate = hashrate
+        self.mining_height = 0
         
         #Add initial block to the chain ends:
         self.chain_ends.add(initial_end_chain)
@@ -106,6 +108,11 @@ class Node:
                     #Marks block as seen, now that it has received it:
                     self.seen_blocks.add(message.block_id)
                     self.blocks[message.block_id] = message
+
+                    if message.height == self.mining_height and self.mine_process is not None:
+                        self.mine_process.interrupt()
+                        self.mine_process = None
+
 
                     #Create 'I have' message for the received block:
                     i_have_message = IHaveMessage(self.node_id, self.env.now, message.block_id)
@@ -363,12 +370,38 @@ def get_number_forks():
 
     return len(forks) - 1
 
+#Calculate wait interval:
+def wait_time(hashrate_i, total_hashrate):
+    share = hashrate_i / total_hashrate
+    lam = share * lambda_NET
+    u = random.random()
+    return -math.log(u) / lam
+
 #Function allowing for repeated dynamic selection of proposal nodes based on hash-rate:
-def mining(node, mining_rate):
+def mining(node):
     while True:
-        wait_interval = random.expovariate(node.hashrate * mining_rate)
-        yield env.timeout(wait_interval)
-        created_blocks.append(node.create_block())
+        current_greatest_end = None
+        #Checks each fork:
+        for end in node.chain_ends:
+            if current_greatest_end == None or end.height > current_greatest_end.height:
+                current_greatest_end = end
+            #Checks to see which is longest chain:
+            elif end.height > current_greatest_end.height:
+                current_greatest_end = end
+        
+        height = current_greatest_end.height
+        node.mining_height = height + 1
+
+        wait_interval = wait_time(node.hashrate, total_hashrate)
+
+        try:
+            yield env.timeout(wait_interval)
+            created_blocks.append(node.create_block())
+            node.mining_height = 0
+        except simpy.Interrupt:
+            node.log.append((env.now, f"Mining cancelled at height {node.mining_height}"))
+            node.mining_height = 0
+
 
 #Finds total hash-rate of network:
 def calculate_total_hashrate():
@@ -389,11 +422,10 @@ instantiate_nodes()
 create_topology()
 
 total_hashrate = calculate_total_hashrate()
-mining_rate =  1 / (block_target_interval * total_hashrate)
 
 #Starts mining for each node:
 for node in nodes:
-    env.process(mining(node, mining_rate))
+    node.mine_process = env.process(mining(node))
 
 #Start simulation:
 env.run(until = simulation_time)
