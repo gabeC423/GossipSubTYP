@@ -13,6 +13,8 @@ current_block_id = 0
 current_node_id = 0
 proposer_nodes = []
 created_blocks = []
+discarded_blocks = []
+blocks_kept = []
 
 #Datasets:
 block_creation_time = {}
@@ -21,7 +23,7 @@ block_creation_time = {}
                      #MESSAGE CLASSES:
 #Message class, defines structure of a message:
 class Message:
-    def __init__(self, block_id, sender_id, creation_time, height, parent = None):
+    def __init__(self, block_id, sender_id, creation_time, height, creator, parent = None):
         #Set parent:
         if parent != None:
             self.parent = parent
@@ -34,6 +36,7 @@ class Message:
         self.sender_id = sender_id
         self.creation_time = creation_time
         self.height = height
+        self.creator = creator
 
 #'I have' message class:
 class IHaveMessage:
@@ -213,7 +216,7 @@ class Node:
         current_block_id += 1
 
         #Creates block and sets it's parent as the best chain end:
-        block = Message(current_block_id, self.node_id, self.env.now, current_best_end.height + 1, current_best_end)
+        block = Message(current_block_id, self.node_id, self.env.now, current_best_end.height + 1, self.node_id, current_best_end)
         block_creation_time[block.block_id] = self.env.now
 
         #Create 'I have' for created block:
@@ -262,6 +265,13 @@ class Node:
 
 #------------------------------------------------------------------------------------#
                     #PROGRAM FUNCTIONS:
+
+def get_node(node_id):
+    for node in nodes:
+        if node.node_id == node_id:
+            return node
+    return None
+    
 
 #Generates a hashrate for a node randomly:
 def generate_hashrate():
@@ -415,7 +425,7 @@ def calculate_total_hashrate():
 #------------------------------------------------------------------------------------#               
                             #INITIALISATION:
 #Genesis block:
-start_block = Message(current_block_id, sender_id = None, creation_time = 0, height = 0, parent = None)
+start_block = Message(current_block_id, sender_id = None, creation_time = 0, height = 0, creator = None, parent = None)
 
 #Set up network:
 instantiate_nodes()
@@ -444,13 +454,16 @@ for block in created_blocks:
     #Consensus output:
     if consensus_time == None:
         print("BLOCK: " + str(block.block_id) + "CONSENSUS WAS NOT MET BEFORE DEADLINE.")
+        discarded_blocks.append(block.block_id)
     elif consensus_time > consensus_deadline:
         print("BLOCK: " + str(block.block_id) + "CONSENSUS MET BUT DEADLINE EXCEEDED BY: " + str(consensus_time - consensus_deadline))
+        blocks_kept.append(block)
     elif consensus_time == consensus_deadline:
         print("BLOCK: " + str(block.block_id) + "CONSENSUS DEADLINE MET.")
+        blocks_kept.append(block)
     else:
         print("BLOCK: " + str(block.block_id) + "CONSENSUS ACHIEVED BEFORE DEADLINE, TIME REMAINING BEFORE DEADLINE: " + str(consensus_deadline - consensus_time))
-
+        blocks_kept.append(block)
 #Shows number of forks in simulation:
 print("Number of forks in network: " + str(get_number_forks()))
 
@@ -467,3 +480,52 @@ plt.plot(block_ids, creation_times, color='lightblue', linestyle='--', alpha=0.5
 plt.ylabel("Time")
 plt.title("Block Creation Times")
 plt.savefig("block_creation_times.png")
+
+#Scatter graph for hash rate to block creation quantity:
+hashrates = []
+hashrate_to_quantity = {}
+
+for node in nodes:
+    if node.hashrate not in hashrates:
+        hashrates.append(node.hashrate)
+
+for hashrate in hashrates:
+    block_count = 0
+    for block in created_blocks:
+        creator = get_node(block.creator)
+
+        if creator.hashrate == hashrate:
+            block_count += 1
+    
+    hashrate_to_quantity[hashrate] = block_count
+
+x = list(hashrate_to_quantity.keys())
+y = list(hashrate_to_quantity.values())
+plt.figure()
+m, b = np.polyfit(x, y, 1)   # slope and intercept
+x_line = np.linspace(min(x), max(x), 100)
+y_line = m * x_line + b
+plt.scatter(x, y)
+plt.plot(x_line, y_line)
+plt.grid(True, linestyle='--', alpha=0.6)
+plt.xlabel("Hashrate")
+plt.ylabel("Blocks Mined")
+plt.title("Hashrate vs Block Contribution")
+plt.savefig("blocks_vs_hashrate.png")
+
+#for node in nodes:
+    #print(node.hashrate)
+
+#Bar chart for kept vs discarded blocks
+plt.figure()
+discarded_count = len(discarded_blocks)
+kept_count = len(blocks_kept)
+categories = ["Kept Blocks", "Discarded Blocks"]
+counts = [kept_count, discarded_count]
+plt.bar(categories, counts, color=['green', 'red'])
+plt.grid(True, linestyle='--', alpha=0.6)
+plt.title('Kept vs Discarded Blocks')
+plt.ylabel('Number of Blocks')
+plt.savefig("Discarded vs Kept blocks.png")
+
+
