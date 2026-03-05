@@ -1,10 +1,41 @@
 #Libraries:
+from typing import Counter
+
 import numpy as np
 import simpy
 import random
 from config import *
 import matplotlib.pyplot as plt
 import math
+import seaborn as sns
+import pandas as pd
+import sqlite3
+from scipy.stats import linregress
+#Database handling:
+conn = sqlite3.connect("results.db")
+cursor = conn.cursor()
+
+# cursor.execute("DROP TABLE IF EXISTS simulation_results")
+# conn.commit()
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS simulation_results (
+               id INTEGER PRIMARY KEY AUTOINCREMENT,
+               experiment TEXT,
+               run INTEGER,
+               hash_rate INTEGER,
+               block_id INTEGER,
+               confirmation_time REAL,
+               block_creation_time REAL,
+               block_size INTEGER,
+               height INTEGER,
+               creator_id INTEGER,
+               network_size INTEGER,
+               number_of_forks INTEGER
+)
+""")
+
+conn.commit()
 
 #Global variables:
 env = simpy.Environment()
@@ -15,6 +46,7 @@ proposer_nodes = []
 created_blocks = []
 discarded_blocks = []
 blocks_kept = []
+run = 0
 
 #Datasets:
 block_creation_time = {}
@@ -271,12 +303,17 @@ def get_node(node_id):
         if node.node_id == node_id:
             return node
     return None
-    
+
 
 #Generates a hashrate for a node randomly:
 def generate_hashrate():
-    hashrate = random.randint(1, 10)
-    return hashrate
+    r = random.random()
+    if r < 0.05:        # top 5% of nodes (10 nodes)
+        return random.randint(50, 100)  # high-power miners
+    else:               # remaining 95% of nodes
+        return random.randint(1, 5)     # low-power m
+
+
         
 def instantiate_nodes():
     for i in range(number_of_nodes):
@@ -313,6 +350,8 @@ def create_topology():
         #Locally logs that neighbour was added:
         log_message = node.env.now, "Added neighbours: " +str([n.node_id for n in node.neighbours])
         node.log.append(log_message)
+
+
 
 #Calculates consensus for a block:
 def calculate_consenus_time(block):
@@ -424,6 +463,7 @@ def calculate_total_hashrate():
       
 #------------------------------------------------------------------------------------#               
                             #INITIALISATION:
+
 #Genesis block:
 start_block = Message(current_block_id, sender_id = None, creation_time = 0, height = 0, creator = None, parent = None)
 
@@ -433,99 +473,275 @@ create_topology()
 
 total_hashrate = calculate_total_hashrate()
 
-#Starts mining for each node:
-for node in nodes:
-    node.mine_process = env.process(mining(node))
+def run_simulation(experiment):
+    #Starts mining for each node:
+    for node in nodes:
+        node.mine_process = env.process(mining(node))
 
-#Start simulation:
-env.run(until = simulation_time)
+    #Start simulation:
+    env.run(until = simulation_time)
+    inter_arrivals = np.diff(sorted([b.creation_time for b in created_blocks]))
 
-#Display node logs:
-for node in nodes:
-    print(f"Node {node.node_id} log:")
-    for entry in node.log:
-        print(entry)
-    print()
+    #Display node logs:
+    for node in nodes:
+        print(f"Node {node.node_id} log:")
+        for entry in node.log:
+            print(entry)
+        print()
 
-#Calculate consensus time:
-for block in created_blocks:
-    consensus_time = calculate_consenus_time(block)
+    forks = get_number_forks()
 
-    #Consensus output:
-    if consensus_time == None:
-        print("BLOCK: " + str(block.block_id) + "CONSENSUS WAS NOT MET BEFORE DEADLINE.")
-        discarded_blocks.append(block.block_id)
-    elif consensus_time > consensus_deadline:
-        print("BLOCK: " + str(block.block_id) + "CONSENSUS MET BUT DEADLINE EXCEEDED BY: " + str(consensus_time - consensus_deadline))
-        blocks_kept.append(block)
-    elif consensus_time == consensus_deadline:
-        print("BLOCK: " + str(block.block_id) + "CONSENSUS DEADLINE MET.")
-        blocks_kept.append(block)
-    else:
-        print("BLOCK: " + str(block.block_id) + "CONSENSUS ACHIEVED BEFORE DEADLINE, TIME REMAINING BEFORE DEADLINE: " + str(consensus_deadline - consensus_time))
-        blocks_kept.append(block)
-#Shows number of forks in simulation:
-print("Number of forks in network: " + str(get_number_forks()))
-
-#------------------------------------------------------------------------------------#               
-                            #DATA REPRESENTATION:
-#Scatter graph for block creation times:
-block_ids = list(block_creation_time.keys())
-creation_times = list(block_creation_time.values())
-plt.scatter(block_ids, creation_times, color='blue')
-plt.grid(True, linestyle='--', alpha=0.5)
-plt.xlabel("Block ID")
-plt.xticks(block_ids[::2])
-plt.plot(block_ids, creation_times, color='lightblue', linestyle='--', alpha=0.5)
-plt.ylabel("Time")
-plt.title("Block Creation Times")
-plt.savefig("block_creation_times.png")
-
-#Scatter graph for hash rate to block creation quantity:
-hashrates = []
-hashrate_to_quantity = {}
-
-for node in nodes:
-    if node.hashrate not in hashrates:
-        hashrates.append(node.hashrate)
-
-for hashrate in hashrates:
-    block_count = 0
+    #Calculate consensus time:
     for block in created_blocks:
+        consensus_time = calculate_consenus_time(block)
         creator = get_node(block.creator)
+        creator_hashrate = creator.hashrate
 
-        if creator.hashrate == hashrate:
-            block_count += 1
-    
-    hashrate_to_quantity[hashrate] = block_count
+        #Consensus output:
+        if consensus_time == None:
+            print("BLOCK: " + str(block.block_id) + "CONSENSUS WAS NOT MET BEFORE DEADLINE.")
+            discarded_blocks.append(block.block_id)
+        elif consensus_time > consensus_deadline:
+            print("BLOCK: " + str(block.block_id) + "CONSENSUS MET BUT DEADLINE EXCEEDED BY: " + str(consensus_time - consensus_deadline))
+            blocks_kept.append(block)
+        elif consensus_time == consensus_deadline:
+            print("BLOCK: " + str(block.block_id) + "CONSENSUS DEADLINE MET.")
+            blocks_kept.append(block)
+        else:
+            print("BLOCK: " + str(block.block_id) + "CONSENSUS ACHIEVED BEFORE DEADLINE, TIME REMAINING BEFORE DEADLINE: " + str(consensus_deadline - consensus_time))
+            blocks_kept.append(block)
+        
+        cursor.execute("""
+                       INSERT INTO simulation_results
+                       (experiment, run, hash_rate, block_id, confirmation_time, block_creation_time, block_size, height, creator_id, network_size, number_of_forks)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       """, (
+                       experiment,
+                       run,
+                       creator_hashrate,
+                       block.block_id,
+                       consensus_time,
+                       block.creation_time,
+                       block.size,
+                       block.height,
+                       block.creator,
+                       len(nodes),
+                       forks
+                    ))
+        conn.commit()
 
-x = list(hashrate_to_quantity.keys())
-y = list(hashrate_to_quantity.values())
-plt.figure()
-m, b = np.polyfit(x, y, 1)   # slope and intercept
-x_line = np.linspace(min(x), max(x), 100)
-y_line = m * x_line + b
-plt.scatter(x, y)
-plt.plot(x_line, y_line)
-plt.grid(True, linestyle='--', alpha=0.6)
-plt.xlabel("Hashrate")
-plt.ylabel("Blocks Mined")
-plt.title("Hashrate vs Block Contribution")
-plt.savefig("blocks_vs_hashrate.png")
 
-#for node in nodes:
-    #print(node.hashrate)
+            # Count blocks per creator
+    blocks_per_node = Counter([b.creator for b in created_blocks])
 
-#Bar chart for kept vs discarded blocks
-plt.figure()
-discarded_count = len(discarded_blocks)
-kept_count = len(blocks_kept)
-categories = ["Kept Blocks", "Discarded Blocks"]
-counts = [kept_count, discarded_count]
-plt.bar(categories, counts, color=['green', 'red'])
-plt.grid(True, linestyle='--', alpha=0.6)
-plt.title('Kept vs Discarded Blocks')
-plt.ylabel('Number of Blocks')
-plt.savefig("Discarded vs Kept blocks.png")
+    # Convert to sorted lists for plotting
+    node_ids = sorted(blocks_per_node.keys())  # numeric node IDs
+    block_counts = [blocks_per_node[n] for n in node_ids]
+
+    print("Forks: " + str(forks))
+
+    fork_rate = (forks / len(created_blocks)) * 100
+    print(fork_rate)
+
+    mean_block_interval = simulation_time/len(created_blocks)
+    print(mean_block_interval)
+
+cursor.execute("SELECT MAX(run) FROM simulation_results WHERE experiment='Equal Hash'")
+last_run = cursor.fetchone()[0] or 0
+run = last_run + 1
+
+run_simulation("-")
+
+# #Inter block 
+# df = pd.read_sql_query("""
+#     SELECT run, block_creation_time
+#     FROM simulation_results
+#     WHERE experiment = 'Normal Run'
+#     ORDER BY run, block_creation_time
+# """, conn)
+
+# all_inter_arrivals = []
+
+# # Group by each run
+# for run_id, group in df.groupby("run"):
+#     times = group['block_creation_time'].sort_values().to_numpy()
+#     if len(times) > 1:
+#         inter_arrivals = np.diff(times)
+#         all_inter_arrivals.extend(inter_arrivals)
 
 
+# sns.histplot(all_inter_arrivals, bins=20)
+# plt.xlabel("Inter-arrival Time")
+# plt.ylabel("Number of Blocks")
+# plt.title("Block Inter-arrival Times Across All Runs")
+# plt.show()
+
+# #Equal hash rate block share:
+
+# df = pd.read_sql_query("""
+#     SELECT run, creator_id, block_id
+#     FROM simulation_results
+#     WHERE experiment = 'Equal Hash Rate'
+# """, conn)
+
+# # Count blocks per node per run
+# blocks_per_node_run = df.groupby(['run', 'creator_id']).count()['block_id'].reset_index()
+# blocks_per_node_run.rename(columns={'block_id':'blocks_created'}, inplace=True)
+
+# # Compute mean and std of blocks per node across runs
+# stats = blocks_per_node_run.groupby('creator_id')['blocks_created'].agg(['mean','std']).reset_index()
+
+# # Plot bar chart with error bars
+# plt.figure(figsize=(10,6))
+# plt.bar(stats['creator_id'], stats['mean'], yerr=stats['std'], color='skyblue', alpha=0.7, capsize=5, label='Mean ± Std Dev')
+
+# # Fit linear trend line
+# slope, intercept = np.polyfit(stats['creator_id'], stats['mean'], 1)
+# best_fit = slope * stats['creator_id'] + intercept
+# plt.plot(stats['creator_id'], best_fit, color='red', linestyle='--', label='Line of Best Fit')
+
+# plt.xlabel("Node ID")
+# plt.ylabel("Blocks Created")
+# plt.title("Blocks per Node Across Multiple Runs — Equal Hash Rate")
+# plt.legend()
+# plt.grid(True)
+# plt.show()
+
+# # Query all hashrates from multiple runs
+# df_nodes = pd.read_sql_query("""
+#     SELECT run, hash_rate, creator_id
+#     FROM simulation_results
+#     WHERE experiment = 'Normal Run'
+#     GROUP BY run, hash_rate, creator_id
+# """, conn)
+
+# # Count nodes per hashrate per run
+# nodes_per_hashrate_run = df_nodes.groupby(['run','hash_rate']).count()['creator_id'].reset_index(name='node_count')
+
+# # Average across runs
+# avg_nodes_per_hashrate = nodes_per_hashrate_run.groupby('hash_rate')['node_count'].mean().reset_index()
+
+# # Plot
+# plt.figure(figsize=(10,6))
+# plt.bar(avg_nodes_per_hashrate['hash_rate'], avg_nodes_per_hashrate['node_count'], color='skyblue', alpha=0.7)
+# plt.xlabel("Node Hashrate")
+# plt.ylabel("Average Number of Nodes")
+# plt.title("Average Distribution of Node Hashrates Across Runs")
+# plt.grid(True)
+# plt.show()
+
+# df = pd.read_sql_query("""
+#     SELECT run, creator_id, hash_rate, block_id
+#     FROM simulation_results
+#     WHERE experiment = 'Normal Run'
+# """, conn)
+
+# # Count blocks per hashrate per run
+# blocks_per_hashrate_run = df.groupby(['run','hash_rate']).count()['block_id'].reset_index(name='blocks_created')
+
+# # Average blocks per hashrate across all runs
+# avg_blocks_per_hashrate = blocks_per_hashrate_run.groupby('hash_rate')['blocks_created'].mean().reset_index()
+
+# # Plot
+# plt.figure(figsize=(10,6))
+# plt.scatter(avg_blocks_per_hashrate['hash_rate'], avg_blocks_per_hashrate['blocks_created'], 
+#             color='blue', s=80, alpha=0.7, label='Average Blocks')
+
+# # Line of best fit
+# slope, intercept = np.polyfit(avg_blocks_per_hashrate['hash_rate'], avg_blocks_per_hashrate['blocks_created'], 1)
+# plt.plot(avg_blocks_per_hashrate['hash_rate'], slope*avg_blocks_per_hashrate['hash_rate'] + intercept,
+#          color='red', linestyle='--', label='Trend Line')
+
+# plt.xlabel("Node Hashrate")
+# plt.ylabel("Average Blocks Produced")
+# plt.title("Average Blocks Produced vs Node Hashrate Across Runs")
+# plt.grid(True)
+# plt.legend()
+# plt.show()
+
+
+# # Query number of forks per run for Equal Hash Rate
+# df_forks_eq = pd.read_sql_query("""
+#     SELECT run, MAX(number_of_forks) AS forks
+#     FROM simulation_results
+#     WHERE experiment = 'Equal Hash Rate'
+#     GROUP BY run
+#     ORDER BY run
+# """, conn)
+
+# print(df_forks_eq.head())
+
+# plt.figure(figsize=(10,6))
+
+# sns.barplot(x='run', y='forks', data=df_forks_eq, color='skyblue', alpha=0.7)
+# plt.xlabel("Simulation Run")
+# plt.ylabel("Number of Forks")
+# plt.title("Number of Forks per Run — Equal Hash Rate Condition")
+# plt.grid(True, linestyle='--', alpha=0.5)
+# plt.show()
+# avg_forks = df_forks_eq['forks'].mean()
+# print(f"Average number of forks (Equal Hash Rate): {avg_forks:.2f}")
+
+df_consensus_skw = pd.read_sql_query("""
+    SELECT run, block_id, confirmation_time
+    FROM simulation_results
+    WHERE experiment = 'Normal2'
+    ORDER BY run, block_id
+""", conn)
+
+print(df_consensus_skw.head())
+
+# Remove blocks that never reached consensus
+df_consensus_skw = df_consensus_skw[df_consensus_skw['confirmation_time'].notnull()]
+
+avg_confirmation_per_run = df_consensus_skw.groupby('run')['confirmation_time'].mean().reset_index()
+print(avg_confirmation_per_run)
+
+plt.figure(figsize=(10,6))
+sns.barplot(x='run', y='confirmation_time', data=avg_confirmation_per_run, color='skyblue', alpha=0.7)
+
+plt.xlabel("Simulation Run")
+plt.ylabel("Average Confirmation Time")
+plt.title("Average Block Confirmation Time per Run — Skewed Hash Rate")
+plt.grid(True, linestyle='--', alpha=0.5)
+plt.show()
+
+
+# Query number of forks per run for Equal Hash
+df_forks_eq = pd.read_sql_query("""
+    SELECT run, MAX(number_of_forks) AS forks
+    FROM simulation_results
+    WHERE experiment = 'Equal Hash'
+    GROUP BY run
+    ORDER BY run
+""", conn)
+df_forks_eq['experiment'] = 'Equal Hash'
+
+# Query number of forks per run for Skewed Hash
+df_forks_sk = pd.read_sql_query("""
+    SELECT run, MAX(number_of_forks) AS forks
+    FROM simulation_results
+    WHERE experiment = 'Normal2'
+    GROUP BY run
+    ORDER BY run
+""", conn)
+df_forks_sk['experiment'] = 'Skewed Hash'
+
+# Combine both datasets
+df_forks_all = pd.concat([df_forks_eq, df_forks_sk], ignore_index=True)
+
+# Plot forks per run for both experiments
+plt.figure(figsize=(12,6))
+sns.barplot(x='run', y='forks', hue='experiment', data=df_forks_all, alpha=0.7)
+plt.xlabel("Simulation Run")
+plt.ylabel("Number of Forks")
+plt.title("Number of Forks per Run — Equal vs Skewed Hash Rate")
+plt.grid(True, linestyle='--', alpha=0.5)
+plt.legend(title="Experiment")
+plt.show()
+
+# Optional: print average forks
+avg_forks_eq = df_forks_eq['forks'].mean()
+avg_forks_sk = df_forks_sk['forks'].mean()
+print(f"Average number of forks (Equal Hash): {avg_forks_eq:.2f}")
+print(f"Average number of forks (Skewed Hash): {avg_forks_sk:.2f}")
