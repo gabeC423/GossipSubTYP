@@ -546,202 +546,96 @@ def run_simulation(experiment):
     mean_block_interval = simulation_time/len(created_blocks)
     print(mean_block_interval)
 
-cursor.execute("SELECT MAX(run) FROM simulation_results WHERE experiment='Equal Hash'")
+cursor.execute("SELECT MAX(run) FROM simulation_results WHERE experiment='BS-L2'")
 last_run = cursor.fetchone()[0] or 0
 run = last_run + 1
 
-run_simulation("-")
+run_simulation("----")
 
-# #Inter block 
-# df = pd.read_sql_query("""
-#     SELECT run, block_creation_time
-#     FROM simulation_results
-#     WHERE experiment = 'Normal Run'
-#     ORDER BY run, block_creation_time
-# """, conn)
-
-# all_inter_arrivals = []
-
-# # Group by each run
-# for run_id, group in df.groupby("run"):
-#     times = group['block_creation_time'].sort_values().to_numpy()
-#     if len(times) > 1:
-#         inter_arrivals = np.diff(times)
-#         all_inter_arrivals.extend(inter_arrivals)
+#Experiments:
 
 
-# sns.histplot(all_inter_arrivals, bins=20)
-# plt.xlabel("Inter-arrival Time")
-# plt.ylabel("Number of Blocks")
-# plt.title("Block Inter-arrival Times Across All Runs")
-# plt.show()
-
-# #Equal hash rate block share:
-
-# df = pd.read_sql_query("""
-#     SELECT run, creator_id, block_id
-#     FROM simulation_results
-#     WHERE experiment = 'Equal Hash Rate'
-# """, conn)
-
-# # Count blocks per node per run
-# blocks_per_node_run = df.groupby(['run', 'creator_id']).count()['block_id'].reset_index()
-# blocks_per_node_run.rename(columns={'block_id':'blocks_created'}, inplace=True)
-
-# # Compute mean and std of blocks per node across runs
-# stats = blocks_per_node_run.groupby('creator_id')['blocks_created'].agg(['mean','std']).reset_index()
-
-# # Plot bar chart with error bars
-# plt.figure(figsize=(10,6))
-# plt.bar(stats['creator_id'], stats['mean'], yerr=stats['std'], color='skyblue', alpha=0.7, capsize=5, label='Mean ± Std Dev')
-
-# # Fit linear trend line
-# slope, intercept = np.polyfit(stats['creator_id'], stats['mean'], 1)
-# best_fit = slope * stats['creator_id'] + intercept
-# plt.plot(stats['creator_id'], best_fit, color='red', linestyle='--', label='Line of Best Fit')
-
-# plt.xlabel("Node ID")
-# plt.ylabel("Blocks Created")
-# plt.title("Blocks per Node Across Multiple Runs — Equal Hash Rate")
-# plt.legend()
-# plt.grid(True)
-# plt.show()
-
-# # Query all hashrates from multiple runs
-# df_nodes = pd.read_sql_query("""
-#     SELECT run, hash_rate, creator_id
-#     FROM simulation_results
-#     WHERE experiment = 'Normal Run'
-#     GROUP BY run, hash_rate, creator_id
-# """, conn)
-
-# # Count nodes per hashrate per run
-# nodes_per_hashrate_run = df_nodes.groupby(['run','hash_rate']).count()['creator_id'].reset_index(name='node_count')
-
-# # Average across runs
-# avg_nodes_per_hashrate = nodes_per_hashrate_run.groupby('hash_rate')['node_count'].mean().reset_index()
-
-# # Plot
-# plt.figure(figsize=(10,6))
-# plt.bar(avg_nodes_per_hashrate['hash_rate'], avg_nodes_per_hashrate['node_count'], color='skyblue', alpha=0.7)
-# plt.xlabel("Node Hashrate")
-# plt.ylabel("Average Number of Nodes")
-# plt.title("Average Distribution of Node Hashrates Across Runs")
-# plt.grid(True)
-# plt.show()
-
-# df = pd.read_sql_query("""
-#     SELECT run, creator_id, hash_rate, block_id
-#     FROM simulation_results
-#     WHERE experiment = 'Normal Run'
-# """, conn)
-
-# # Count blocks per hashrate per run
-# blocks_per_hashrate_run = df.groupby(['run','hash_rate']).count()['block_id'].reset_index(name='blocks_created')
-
-# # Average blocks per hashrate across all runs
-# avg_blocks_per_hashrate = blocks_per_hashrate_run.groupby('hash_rate')['blocks_created'].mean().reset_index()
-
-# # Plot
-# plt.figure(figsize=(10,6))
-# plt.scatter(avg_blocks_per_hashrate['hash_rate'], avg_blocks_per_hashrate['blocks_created'], 
-#             color='blue', s=80, alpha=0.7, label='Average Blocks')
-
-# # Line of best fit
-# slope, intercept = np.polyfit(avg_blocks_per_hashrate['hash_rate'], avg_blocks_per_hashrate['blocks_created'], 1)
-# plt.plot(avg_blocks_per_hashrate['hash_rate'], slope*avg_blocks_per_hashrate['hash_rate'] + intercept,
-#          color='red', linestyle='--', label='Trend Line')
-
-# plt.xlabel("Node Hashrate")
-# plt.ylabel("Average Blocks Produced")
-# plt.title("Average Blocks Produced vs Node Hashrate Across Runs")
-# plt.grid(True)
-# plt.legend()
-# plt.show()
-
-
-# # Query number of forks per run for Equal Hash Rate
-# df_forks_eq = pd.read_sql_query("""
-#     SELECT run, MAX(number_of_forks) AS forks
-#     FROM simulation_results
-#     WHERE experiment = 'Equal Hash Rate'
-#     GROUP BY run
-#     ORDER BY run
-# """, conn)
-
-# print(df_forks_eq.head())
-
-# plt.figure(figsize=(10,6))
-
-# sns.barplot(x='run', y='forks', data=df_forks_eq, color='skyblue', alpha=0.7)
-# plt.xlabel("Simulation Run")
-# plt.ylabel("Number of Forks")
-# plt.title("Number of Forks per Run — Equal Hash Rate Condition")
-# plt.grid(True, linestyle='--', alpha=0.5)
-# plt.show()
-# avg_forks = df_forks_eq['forks'].mean()
-# print(f"Average number of forks (Equal Hash Rate): {avg_forks:.2f}")
-
-df_consensus_skw = pd.read_sql_query("""
-    SELECT run, block_id, confirmation_time
+df = pd.read_sql_query("""
+    SELECT run, block_id, confirmation_time, number_of_forks
     FROM simulation_results
-    WHERE experiment = 'Normal2'
-    ORDER BY run, block_id
+    WHERE experiment='BS-L2'
 """, conn)
 
-print(df_consensus_skw.head())
-
-# Remove blocks that never reached consensus
-df_consensus_skw = df_consensus_skw[df_consensus_skw['confirmation_time'].notnull()]
-
-avg_confirmation_per_run = df_consensus_skw.groupby('run')['confirmation_time'].mean().reset_index()
+# Average block confirmation time per run
+avg_confirmation_per_run = df.groupby('run')['confirmation_time'].mean().reset_index()
+print("Average confirmation time per run:")
 print(avg_confirmation_per_run)
 
-plt.figure(figsize=(10,6))
-sns.barplot(x='run', y='confirmation_time', data=avg_confirmation_per_run, color='skyblue', alpha=0.7)
+# Average number of forks across all runs
+avg_forks_all_runs = df.groupby('run')['number_of_forks'].mean().mean()
+print(f"Average number of forks across all runs: {avg_forks_all_runs:.2f}")
 
-plt.xlabel("Simulation Run")
-plt.ylabel("Average Confirmation Time")
-plt.title("Average Block Confirmation Time per Run — Skewed Hash Rate")
-plt.grid(True, linestyle='--', alpha=0.5)
+# Plot average confirmation time per run
+plt.figure(figsize=(8,5))
+plt.plot(avg_confirmation_per_run['run'], avg_confirmation_per_run['confirmation_time'], marker='o')
+plt.title("Average large Block Confirmation Time per Run (Large)")
+plt.xlabel("Run")
+plt.ylabel("Average Confirmation Time large (time units)")
+plt.grid(True)
 plt.show()
 
 
-# Query number of forks per run for Equal Hash
-df_forks_eq = pd.read_sql_query("""
-    SELECT run, MAX(number_of_forks) AS forks
+
+
+
+
+
+
+
+df = pd.read_sql_query("""
+    SELECT run, block_id, confirmation_time, number_of_forks
     FROM simulation_results
-    WHERE experiment = 'Equal Hash'
-    GROUP BY run
-    ORDER BY run
+    WHERE experiment='BS-L'
 """, conn)
-df_forks_eq['experiment'] = 'Equal Hash'
 
-# Query number of forks per run for Skewed Hash
-df_forks_sk = pd.read_sql_query("""
-    SELECT run, MAX(number_of_forks) AS forks
-    FROM simulation_results
-    WHERE experiment = 'Normal2'
-    GROUP BY run
-    ORDER BY run
-""", conn)
-df_forks_sk['experiment'] = 'Skewed Hash'
+# Average block confirmation time per run
+avg_confirmation_per_run = df.groupby('run')['confirmation_time'].mean().reset_index()
+print("Average small confirmation time per run:")
+print(avg_confirmation_per_run)
 
-# Combine both datasets
-df_forks_all = pd.concat([df_forks_eq, df_forks_sk], ignore_index=True)
+# Average number of forks across all runs
+avg_forks_all_runs = df.groupby('run')['number_of_forks'].mean().mean()
+print(f"Average number of forks across all runs small : {avg_forks_all_runs:.2f}")
 
-# Plot forks per run for both experiments
-plt.figure(figsize=(12,6))
-sns.barplot(x='run', y='forks', hue='experiment', data=df_forks_all, alpha=0.7)
-plt.xlabel("Simulation Run")
-plt.ylabel("Number of Forks")
-plt.title("Number of Forks per Run — Equal vs Skewed Hash Rate")
-plt.grid(True, linestyle='--', alpha=0.5)
-plt.legend(title="Experiment")
+# Plot average confirmation time per run
+plt.figure(figsize=(8,5))
+plt.plot(avg_confirmation_per_run['run'], avg_confirmation_per_run['confirmation_time'], marker='o')
+plt.title("Average Block Confirmation Time per Run (Small)")
+plt.xlabel("Run")
+plt.ylabel("Average Confirmation Time (time units)")
+plt.grid(True)
 plt.show()
 
-# Optional: print average forks
-avg_forks_eq = df_forks_eq['forks'].mean()
-avg_forks_sk = df_forks_sk['forks'].mean()
-print(f"Average number of forks (Equal Hash): {avg_forks_eq:.2f}")
-print(f"Average number of forks (Skewed Hash): {avg_forks_sk:.2f}")
+
+
+
+
+
+df = pd.read_sql_query("""
+    SELECT run, block_id, confirmation_time, number_of_forks
+    FROM simulation_results
+    WHERE experiment='BS-M'
+""", conn)
+
+# Average block confirmation time per run
+avg_confirmation_per_run = df.groupby('run')['confirmation_time'].mean().reset_index()
+print("Average confirmation time per run medium:")
+print(avg_confirmation_per_run)
+
+# Average number of forks across all runs
+avg_forks_all_runs = df.groupby('run')['number_of_forks'].mean().mean()
+print(f"Average number of forks across all runs medium: {avg_forks_all_runs:.2f}")
+
+# Plot average confirmation time per run
+plt.figure(figsize=(8,5))
+plt.plot(avg_confirmation_per_run['run'], avg_confirmation_per_run['confirmation_time'], marker='o')
+plt.title("Average Block Confirmation Time per Run (Medium)")
+plt.xlabel("Run")
+plt.ylabel("Average Confirmation Time (time units)")
+plt.grid(True)
+plt.show()
